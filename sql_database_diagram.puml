@@ -1,0 +1,353 @@
+@startuml SQL Database Schema - E-Commerce System
+
+!define TABLE class
+!define PRIMARY_KEY <<PK>>
+!define FOREIGN_KEY <<FK>>
+!define UNIQUE <<UK>>
+!define INDEX <<IDX>>
+
+skinparam {
+    backgroundColor #FEFEFE
+    classBackgroundColor #E8F4FD
+    classBorderColor #1976D2
+    packageBackgroundColor #F5F5F5
+    packageBorderColor #757575
+    noteBackgroundColor #FFF3E0
+    noteBorderColor #FF9800
+    arrowColor #424242
+    classFontSize 11
+    packageFontSize 13
+    titleFontSize 16
+}
+
+title "SQL Database Schema - E-Commerce System\nRelational Database Design with Constraints & Indexes"
+
+package "User Management Schema" #E3F2FD {
+    
+    TABLE users {
+        + user_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        username: VARCHAR(50) NOT NULL <<UK>>
+        email: VARCHAR(255) NOT NULL <<UK>>
+        password_hash: VARCHAR(255) NOT NULL
+        first_name: VARCHAR(100)
+        last_name: VARCHAR(100)
+        phone_number: VARCHAR(20)
+        date_of_birth: DATE
+        status: ENUM('ACTIVE','INACTIVE','SUSPENDED') DEFAULT 'ACTIVE'
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        last_login: TIMESTAMP
+        --
+        INDEX idx_users_email (email)
+        INDEX idx_users_username (username)
+        INDEX idx_users_status (status)
+    }
+    
+    TABLE user_addresses {
+        + address_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        user_id: BIGINT NOT NULL <<FK>>
+        address_type: ENUM('BILLING','SHIPPING','BOTH') DEFAULT 'BOTH'
+        street_address: VARCHAR(255) NOT NULL
+        city: VARCHAR(100) NOT NULL
+        state_province: VARCHAR(100)
+        postal_code: VARCHAR(20) NOT NULL
+        country: VARCHAR(100) NOT NULL
+        is_default: BOOLEAN DEFAULT FALSE
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        --
+        INDEX idx_addresses_user_id (user_id)
+        INDEX idx_addresses_type (address_type)
+        CONSTRAINT fk_addresses_user FOREIGN KEY (user_id) REFERENCES users(user_id)
+    }
+    
+    TABLE user_roles {
+        + role_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        role_name: VARCHAR(50) NOT NULL <<UK>>
+        description: TEXT
+        permissions: JSON
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        --
+        INDEX idx_roles_name (role_name)
+    }
+    
+    TABLE user_role_assignments {
+        + assignment_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        user_id: BIGINT NOT NULL <<FK>>
+        role_id: BIGINT NOT NULL <<FK>>
+        assigned_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        assigned_by: BIGINT <<FK>>
+        --
+        UNIQUE KEY uk_user_role (user_id, role_id)
+        INDEX idx_assignments_user (user_id)
+        INDEX idx_assignments_role (role_id)
+        CONSTRAINT fk_assignments_user FOREIGN KEY (user_id) REFERENCES users(user_id)
+        CONSTRAINT fk_assignments_role FOREIGN KEY (role_id) REFERENCES user_roles(role_id)
+        CONSTRAINT fk_assignments_assigned_by FOREIGN KEY (assigned_by) REFERENCES users(user_id)
+    }
+}
+
+package "Product Catalog Schema" #E8F5E8 {
+    
+    TABLE categories {
+        + category_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        parent_category_id: BIGINT <<FK>>
+        category_name: VARCHAR(100) NOT NULL
+        category_slug: VARCHAR(100) NOT NULL <<UK>>
+        description: TEXT
+        image_url: VARCHAR(500)
+        sort_order: INT DEFAULT 0
+        is_active: BOOLEAN DEFAULT TRUE
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        --
+        INDEX idx_categories_parent (parent_category_id)
+        INDEX idx_categories_slug (category_slug)
+        INDEX idx_categories_active (is_active)
+        CONSTRAINT fk_categories_parent FOREIGN KEY (parent_category_id) REFERENCES categories(category_id)
+    }
+    
+    TABLE products {
+        + product_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        category_id: BIGINT NOT NULL <<FK>>
+        sku: VARCHAR(100) NOT NULL <<UK>>
+        product_name: VARCHAR(255) NOT NULL
+        product_slug: VARCHAR(255) NOT NULL <<UK>>
+        short_description: TEXT
+        long_description: LONGTEXT
+        price: DECIMAL(10,2) NOT NULL
+        cost_price: DECIMAL(10,2)
+        weight: DECIMAL(8,3)
+        dimensions: JSON
+        is_active: BOOLEAN DEFAULT TRUE
+        is_featured: BOOLEAN DEFAULT FALSE
+        meta_title: VARCHAR(255)
+        meta_description: TEXT
+        meta_keywords: TEXT
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        --
+        INDEX idx_products_category (category_id)
+        INDEX idx_products_sku (sku)
+        INDEX idx_products_slug (product_slug)
+        INDEX idx_products_price (price)
+        INDEX idx_products_active (is_active)
+        INDEX idx_products_featured (is_featured)
+        FULLTEXT idx_products_search (product_name, short_description)
+        CONSTRAINT fk_products_category FOREIGN KEY (category_id) REFERENCES categories(category_id)
+    }
+    
+    TABLE product_variants {
+        + variant_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        product_id: BIGINT NOT NULL <<FK>>
+        variant_sku: VARCHAR(100) NOT NULL <<UK>>
+        variant_name: VARCHAR(255)
+        price_adjustment: DECIMAL(10,2) DEFAULT 0.00
+        weight_adjustment: DECIMAL(8,3) DEFAULT 0.000
+        attributes: JSON
+        is_active: BOOLEAN DEFAULT TRUE
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        --
+        INDEX idx_variants_product (product_id)
+        INDEX idx_variants_sku (variant_sku)
+        INDEX idx_variants_active (is_active)
+        CONSTRAINT fk_variants_product FOREIGN KEY (product_id) REFERENCES products(product_id)
+    }
+    
+    TABLE inventory {
+        + inventory_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        product_id: BIGINT <<FK>>
+        variant_id: BIGINT <<FK>>
+        warehouse_id: BIGINT <<FK>>
+        quantity_available: INT NOT NULL DEFAULT 0
+        quantity_reserved: INT NOT NULL DEFAULT 0
+        quantity_sold: INT NOT NULL DEFAULT 0
+        reorder_level: INT DEFAULT 10
+        reorder_quantity: INT DEFAULT 50
+        last_updated: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        --
+        INDEX idx_inventory_product (product_id)
+        INDEX idx_inventory_variant (variant_id)
+        INDEX idx_inventory_warehouse (warehouse_id)
+        INDEX idx_inventory_available (quantity_available)
+        CONSTRAINT fk_inventory_product FOREIGN KEY (product_id) REFERENCES products(product_id)
+        CONSTRAINT fk_inventory_variant FOREIGN KEY (variant_id) REFERENCES product_variants(variant_id)
+    }
+}
+
+package "Order Management Schema" #FFF3E0 {
+    
+    TABLE orders {
+        + order_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        user_id: BIGINT NOT NULL <<FK>>
+        order_number: VARCHAR(50) NOT NULL <<UK>>
+        order_status: ENUM('DRAFT','PENDING','CONFIRMED','PROCESSING','SHIPPED','DELIVERED','CANCELLED','REFUNDED') DEFAULT 'DRAFT'
+        payment_status: ENUM('PENDING','PAID','FAILED','REFUNDED','PARTIALLY_REFUNDED') DEFAULT 'PENDING'
+        subtotal: DECIMAL(10,2) NOT NULL
+        tax_amount: DECIMAL(10,2) DEFAULT 0.00
+        shipping_amount: DECIMAL(10,2) DEFAULT 0.00
+        discount_amount: DECIMAL(10,2) DEFAULT 0.00
+        total_amount: DECIMAL(10,2) NOT NULL
+        currency: CHAR(3) DEFAULT 'USD'
+        shipping_address: JSON NOT NULL
+        billing_address: JSON NOT NULL
+        order_notes: TEXT
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        shipped_at: TIMESTAMP NULL
+        delivered_at: TIMESTAMP NULL
+        --
+        INDEX idx_orders_user (user_id)
+        INDEX idx_orders_number (order_number)
+        INDEX idx_orders_status (order_status)
+        INDEX idx_orders_payment_status (payment_status)
+        INDEX idx_orders_created (created_at)
+        INDEX idx_orders_total (total_amount)
+        CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(user_id)
+    }
+    
+    TABLE order_items {
+        + order_item_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        order_id: BIGINT NOT NULL <<FK>>
+        product_id: BIGINT NOT NULL <<FK>>
+        variant_id: BIGINT <<FK>>
+        product_name: VARCHAR(255) NOT NULL
+        product_sku: VARCHAR(100) NOT NULL
+        quantity: INT NOT NULL
+        unit_price: DECIMAL(10,2) NOT NULL
+        discount_amount: DECIMAL(10,2) DEFAULT 0.00
+        total_price: DECIMAL(10,2) NOT NULL
+        product_data: JSON
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        --
+        INDEX idx_order_items_order (order_id)
+        INDEX idx_order_items_product (product_id)
+        INDEX idx_order_items_variant (variant_id)
+        CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(order_id)
+        CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES products(product_id)
+        CONSTRAINT fk_order_items_variant FOREIGN KEY (variant_id) REFERENCES product_variants(variant_id)
+    }
+    
+    TABLE payments {
+        + payment_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        order_id: BIGINT NOT NULL <<FK>>
+        payment_method: ENUM('CREDIT_CARD','DEBIT_CARD','PAYPAL','BANK_TRANSFER','CRYPTOCURRENCY') NOT NULL
+        payment_provider: VARCHAR(50)
+        transaction_id: VARCHAR(255)
+        payment_status: ENUM('PENDING','PROCESSING','COMPLETED','FAILED','CANCELLED','REFUNDED') DEFAULT 'PENDING'
+        amount: DECIMAL(10,2) NOT NULL
+        currency: CHAR(3) DEFAULT 'USD'
+        payment_data: JSON
+        processed_at: TIMESTAMP NULL
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        --
+        INDEX idx_payments_order (order_id)
+        INDEX idx_payments_transaction (transaction_id)
+        INDEX idx_payments_status (payment_status)
+        INDEX idx_payments_method (payment_method)
+        INDEX idx_payments_processed (processed_at)
+        CONSTRAINT fk_payments_order FOREIGN KEY (order_id) REFERENCES orders(order_id)
+    }
+    
+    TABLE shipping_tracking {
+        + tracking_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        order_id: BIGINT NOT NULL <<FK>>
+        carrier: VARCHAR(100)
+        tracking_number: VARCHAR(255)
+        shipping_method: VARCHAR(100)
+        status: ENUM('LABEL_CREATED','PICKED_UP','IN_TRANSIT','OUT_FOR_DELIVERY','DELIVERED','EXCEPTION') DEFAULT 'LABEL_CREATED'
+        estimated_delivery: DATE
+        actual_delivery: TIMESTAMP NULL
+        tracking_url: VARCHAR(500)
+        created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        --
+        INDEX idx_tracking_order (order_id)
+        INDEX idx_tracking_number (tracking_number)
+        INDEX idx_tracking_status (status)
+        CONSTRAINT fk_tracking_order FOREIGN KEY (order_id) REFERENCES orders(order_id)
+    }
+}
+
+package "Analytics & Audit Schema" #F3E5F5 {
+    
+    TABLE audit_logs {
+        + log_id: BIGINT PRIMARY_KEY <<PK>>
+        --
+        table_name: VARCHAR(100) NOT NULL
+        record_id: BIGINT NOT NULL
+        action: ENUM('INSERT','UPDATE','DELETE') NOT NULL
+        old_values: JSON
+        new_values: JSON
+        changed_by: BIGINT <<FK>>
+        changed_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ip_address: VARCHAR(45)
+        user_agent: TEXT
+        --
+        INDEX idx_audit_table (table_name)
+        INDEX idx_audit_record (record_id)
+        INDEX idx_audit_action (action)
+        INDEX idx_audit_user (changed_by)
+        INDEX idx_audit_timestamp (changed_at)
+        CONSTRAINT fk_audit_user FOREIGN KEY (changed_by) REFERENCES users(user_id)
+    }
+    
+    TABLE session_logs {
+        + session_id: VARCHAR(128) PRIMARY_KEY <<PK>>
+        --
+        user_id: BIGINT <<FK>>
+        ip_address: VARCHAR(45) NOT NULL
+        user_agent: TEXT
+        login_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        logout_at: TIMESTAMP NULL
+        last_activity: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        is_active: BOOLEAN DEFAULT TRUE
+        --
+        INDEX idx_sessions_user (user_id)
+        INDEX idx_sessions_ip (ip_address)
+        INDEX idx_sessions_login (login_at)
+        INDEX idx_sessions_active (is_active)
+        CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(user_id)
+    }
+}
+
+' Relationships
+users ||--o{ user_addresses : has
+users ||--o{ user_role_assignments : assigned
+user_roles ||--o{ user_role_assignments : contains
+categories ||--o{ categories : parent_child
+categories ||--o{ products : categorizes
+products ||--o{ product_variants : has
+products ||--o{ inventory : tracks
+product_variants ||--o{ inventory : tracks
+users ||--o{ orders : places
+orders ||--o{ order_items : contains
+products ||--o{ order_items : included_in
+product_variants ||--o{ order_items : variant_of
+orders ||--o{ payments : paid_by
+orders ||--o{ shipping_tracking : shipped_via
+users ||--o{ audit_logs : logged_by
+users ||--o{ session_logs : authenticated
+
+note top of users : "Central user table with authentication\nand profile information"
+
+note right of products : "Main product catalog with\nSEO optimization and full-text search"
+
+note bottom of orders : "Complete order lifecycle\nwith status tracking and JSON addresses"
+
+note left of inventory : "Real-time inventory management\nwith reservation system"
+
+note top of audit_logs : "Complete audit trail\nfor compliance and debugging"
+
+@enduml
