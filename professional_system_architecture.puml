@@ -1,0 +1,392 @@
+@startuml Enterprise System Architecture
+
+!define RECTANGLE class
+!define INTERFACE interface
+
+skinparam {
+    backgroundColor #FEFEFE
+    classBackgroundColor #E1F5FE
+    classBorderColor #0277BD
+    interfaceBackgroundColor #F3E5F5
+    interfaceBorderColor #7B1FA2
+    actorBackgroundColor #E8F5E8
+    actorBorderColor #2E7D32
+    noteBackgroundColor #FFF3E0
+    noteBorderColor #F57C00
+    arrowColor #424242
+    arrowFontColor #424242
+    classFontSize 12
+    packageFontSize 14
+    titleFontSize 16
+}
+
+title "Enterprise E-Commerce System Architecture\nMicroservices & Domain-Driven Design"
+
+' Domain Layer
+package "Domain Layer" #LIGHTBLUE {
+    
+    abstract class AggregateRoot {
+        #id: UUID
+        #version: Long
+        #createdAt: Timestamp
+        #updatedAt: Timestamp
+        +getId(): UUID
+        +getVersion(): Long
+        {abstract} +validate(): ValidationResult
+    }
+    
+    class User extends AggregateRoot {
+        -email: Email
+        -hashedPassword: String
+        -profile: UserProfile
+        -roles: Set<Role>
+        -status: UserStatus
+        +authenticate(password: String): AuthResult
+        +assignRole(role: Role): void
+        +updateProfile(profile: UserProfile): void
+        +changePassword(oldPassword: String, newPassword: String): void
+        +deactivate(): void
+    }
+    
+    class Product extends AggregateRoot {
+        -sku: SKU
+        -name: ProductName
+        -description: String
+        -price: Money
+        -category: Category
+        -inventory: Inventory
+        -specifications: Map<String, Object>
+        +updatePrice(newPrice: Money): void
+        +adjustInventory(quantity: Integer): void
+        +isAvailable(): Boolean
+        +applyDiscount(discount: Discount): void
+    }
+    
+    class Order extends AggregateRoot {
+        -customerId: UUID
+        -orderItems: List<OrderItem>
+        -shippingAddress: Address
+        -billingAddress: Address
+        -paymentMethod: PaymentMethod
+        -status: OrderStatus
+        -totalAmount: Money
+        -discounts: List<Discount>
+        +addItem(product: Product, quantity: Integer): void
+        +removeItem(productId: UUID): void
+        +calculateTotal(): Money
+        +applyDiscount(discount: Discount): void
+        +confirm(): void
+        +ship(): void
+        +cancel(): void
+        +refund(amount: Money): void
+    }
+    
+    class OrderItem {
+        -productId: UUID
+        -productName: String
+        -quantity: Integer
+        -unitPrice: Money
+        -discount: Money
+        +getSubtotal(): Money
+        +applyDiscount(discount: Money): void
+    }
+    
+    class Payment extends AggregateRoot {
+        -orderId: UUID
+        -amount: Money
+        -paymentMethod: PaymentMethod
+        -status: PaymentStatus
+        -transactionId: String
+        -processedAt: Timestamp
+        +process(): PaymentResult
+        +refund(amount: Money): RefundResult
+        +verify(): Boolean
+    }
+}
+
+' Value Objects
+package "Value Objects" #LIGHTYELLOW {
+    class Email {
+        -value: String
+        +Email(email: String)
+        +isValid(): Boolean
+        +getDomain(): String
+    }
+    
+    class Money {
+        -amount: BigDecimal
+        -currency: Currency
+        +add(other: Money): Money
+        +subtract(other: Money): Money
+        +multiply(factor: BigDecimal): Money
+        +isZero(): Boolean
+        +isPositive(): Boolean
+    }
+    
+    class Address {
+        -street: String
+        -city: String
+        -state: String
+        -zipCode: String
+        -country: String
+        +getFullAddress(): String
+        +isValidZipCode(): Boolean
+    }
+    
+    class SKU {
+        -code: String
+        +isValid(): Boolean
+    }
+}
+
+' Enumerations
+package "Enumerations" #LIGHTGREEN {
+    enum UserStatus {
+        ACTIVE
+        INACTIVE
+        SUSPENDED
+        PENDING_VERIFICATION
+    }
+    
+    enum OrderStatus {
+        DRAFT
+        PENDING_PAYMENT
+        PAID
+        CONFIRMED
+        PROCESSING
+        SHIPPED
+        DELIVERED
+        CANCELLED
+        REFUNDED
+    }
+    
+    enum PaymentStatus {
+        PENDING
+        PROCESSING
+        COMPLETED
+        FAILED
+        REFUNDED
+        CANCELLED
+    }
+    
+    enum PaymentMethod {
+        CREDIT_CARD
+        DEBIT_CARD
+        PAYPAL
+        BANK_TRANSFER
+        CRYPTOCURRENCY
+    }
+}
+
+' Domain Services
+package "Domain Services" #LIGHTCYAN {
+    interface PricingService {
+        +calculatePrice(product: Product, customer: User): Money
+        +applyDiscounts(order: Order): Money
+    }
+    
+    interface InventoryService {
+        +checkAvailability(productId: UUID, quantity: Integer): Boolean
+        +reserveItems(orderItems: List<OrderItem>): ReservationResult
+        +releaseReservation(reservationId: UUID): void
+    }
+    
+    interface PaymentProcessorService {
+        +processPayment(payment: Payment): PaymentResult
+        +refundPayment(paymentId: UUID, amount: Money): RefundResult
+        +verifyTransaction(transactionId: String): Boolean
+    }
+}
+
+newpage
+
+' Application Layer
+package "Application Layer" #LIGHTPINK {
+    
+    interface CommandHandler<T> {
+        +handle(command: T): Result
+    }
+    
+    interface QueryHandler<T, R> {
+        +handle(query: T): R
+    }
+    
+    class CreateUserCommandHandler implements CommandHandler {
+        -userRepository: UserRepository
+        -emailService: EmailService
+        +handle(command: CreateUserCommand): Result
+    }
+    
+    class PlaceOrderCommandHandler implements CommandHandler {
+        -orderRepository: OrderRepository
+        -productRepository: ProductRepository
+        -inventoryService: InventoryService
+        -pricingService: PricingService
+        +handle(command: PlaceOrderCommand): Result
+    }
+    
+    class ProcessPaymentCommandHandler implements CommandHandler {
+        -paymentRepository: PaymentRepository
+        -paymentProcessor: PaymentProcessorService
+        -orderRepository: OrderRepository
+        +handle(command: ProcessPaymentCommand): Result
+    }
+    
+    class GetUserProfileQueryHandler implements QueryHandler {
+        -userRepository: UserRepository
+        +handle(query: GetUserProfileQuery): UserProfileDTO
+    }
+    
+    class GetOrderHistoryQueryHandler implements QueryHandler {
+        -orderRepository: OrderRepository
+        +handle(query: GetOrderHistoryQuery): List<OrderDTO>
+    }
+}
+
+' Commands and Queries (CQRS)
+package "Commands & Queries" #LAVENDER {
+    class CreateUserCommand {
+        +email: String
+        +password: String
+        +profile: UserProfileData
+    }
+    
+    class PlaceOrderCommand {
+        +customerId: UUID
+        +items: List<OrderItemData>
+        +shippingAddress: AddressData
+        +paymentMethod: PaymentMethodData
+    }
+    
+    class ProcessPaymentCommand {
+        +orderId: UUID
+        +paymentDetails: PaymentData
+    }
+    
+    class GetUserProfileQuery {
+        +userId: UUID
+    }
+    
+    class GetOrderHistoryQuery {
+        +customerId: UUID
+        +pageSize: Integer
+        +pageNumber: Integer
+    }
+}
+
+newpage
+
+' Infrastructure Layer
+package "Infrastructure Layer" #LIGHTGRAY {
+    
+    interface UserRepository {
+        +save(user: User): void
+        +findById(id: UUID): Optional<User>
+        +findByEmail(email: Email): Optional<User>
+        +delete(id: UUID): void
+    }
+    
+    interface ProductRepository {
+        +save(product: Product): void
+        +findById(id: UUID): Optional<Product>
+        +findBySKU(sku: SKU): Optional<Product>
+        +findByCategory(category: String): List<Product>
+        +search(criteria: SearchCriteria): PagedResult<Product>
+    }
+    
+    interface OrderRepository {
+        +save(order: Order): void
+        +findById(id: UUID): Optional<Order>
+        +findByCustomerId(customerId: UUID): List<Order>
+        +findByStatus(status: OrderStatus): List<Order>
+    }
+    
+    interface PaymentRepository {
+        +save(payment: Payment): void
+        +findById(id: UUID): Optional<Payment>
+        +findByOrderId(orderId: UUID): List<Payment>
+    }
+    
+    class JpaUserRepository implements UserRepository {
+        -entityManager: EntityManager
+        +save(user: User): void
+        +findById(id: UUID): Optional<User>
+        +findByEmail(email: Email): Optional<User>
+    }
+    
+    class ElasticsearchProductRepository implements ProductRepository {
+        -elasticsearchClient: ElasticsearchClient
+        +search(criteria: SearchCriteria): PagedResult<Product>
+        +findByCategory(category: String): List<Product>
+    }
+    
+    class EventStoreOrderRepository implements OrderRepository {
+        -eventStore: EventStore
+        +save(order: Order): void
+        +findById(id: UUID): Optional<Order>
+    }
+}
+
+' External Services
+package "External Services" #MISTYROSE {
+    interface EmailService {
+        +sendWelcomeEmail(user: User): void
+        +sendOrderConfirmation(order: Order): void
+        +sendPasswordReset(user: User, token: String): void
+    }
+    
+    interface NotificationService {
+        +sendPushNotification(userId: UUID, message: String): void
+        +sendSMS(phoneNumber: String, message: String): void
+    }
+    
+    class StripePaymentProcessor implements PaymentProcessorService {
+        -stripeClient: StripeClient
+        +processPayment(payment: Payment): PaymentResult
+        +refundPayment(paymentId: UUID, amount: Money): RefundResult
+    }
+    
+    class SendGridEmailService implements EmailService {
+        -sendGridClient: SendGridClient
+        +sendWelcomeEmail(user: User): void
+        +sendOrderConfirmation(order: Order): void
+    }
+}
+
+' Relationships
+User ||--o{ Order : places
+Order ||--o{ OrderItem : contains
+Product ||--o{ OrderItem : references
+Order ||--o{ Payment : has
+User ||-- UserStatus
+Order ||-- OrderStatus
+Payment ||-- PaymentStatus
+Payment ||-- PaymentMethod
+
+User *-- Email
+User *-- Address
+Product *-- SKU
+Product *-- Money
+Order *-- Money
+OrderItem *-- Money
+Payment *-- Money
+
+CreateUserCommandHandler ..> UserRepository : uses
+PlaceOrderCommandHandler ..> OrderRepository : uses
+PlaceOrderCommandHandler ..> ProductRepository : uses
+ProcessPaymentCommandHandler ..> PaymentRepository : uses
+
+JpaUserRepository ..|> UserRepository : implements
+ElasticsearchProductRepository ..|> ProductRepository : implements
+EventStoreOrderRepository ..|> OrderRepository : implements
+
+StripePaymentProcessor ..|> PaymentProcessorService : implements
+SendGridEmailService ..|> EmailService : implements
+
+note top of AggregateRoot : "Base class for all domain aggregates\nImplements common audit fields and validation"
+
+note right of Order : "Main aggregate for order management\nEnforces business rules and invariants"
+
+note bottom of PaymentProcessorService : "External payment processing\nAbstracted through interface for flexibility"
+
+@enduml
