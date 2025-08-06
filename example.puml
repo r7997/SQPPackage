@@ -1,0 +1,158 @@
+@startuml Example UML Diagrams
+
+' Class Diagram Example
+package "E-Commerce System" {
+    class User {
+        -id: Long
+        -username: String
+        -email: String
+        -password: String
+        +login(username, password): boolean
+        +register(): void
+        +updateProfile(): void
+    }
+
+    class Product {
+        -id: Long
+        -name: String
+        -price: Double
+        -description: String
+        -stock: Integer
+        +getPrice(): Double
+        +updateStock(quantity): void
+        +isAvailable(): boolean
+    }
+
+    class Order {
+        -id: Long
+        -orderDate: Date
+        -status: OrderStatus
+        -totalAmount: Double
+        +calculateTotal(): Double
+        +addItem(product, quantity): void
+        +removeItem(product): void
+        +processPayment(): boolean
+    }
+
+    class OrderItem {
+        -quantity: Integer
+        -unitPrice: Double
+        +getSubtotal(): Double
+    }
+
+    enum OrderStatus {
+        PENDING
+        CONFIRMED
+        SHIPPED
+        DELIVERED
+        CANCELLED
+    }
+
+    ' Relationships
+    User ||--o{ Order : places
+    Order ||--o{ OrderItem : contains
+    Product ||--o{ OrderItem : includes
+    Order ||-- OrderStatus
+}
+
+newpage
+
+' Sequence Diagram Example
+title "User Login Process"
+
+actor User
+participant "Web Interface" as UI
+participant "Authentication Service" as Auth
+participant "Database" as DB
+
+User -> UI: Enter credentials
+UI -> Auth: validateCredentials(username, password)
+Auth -> DB: getUserByUsername(username)
+DB --> Auth: User data
+Auth -> Auth: verifyPassword(password, hashedPassword)
+
+alt successful authentication
+    Auth --> UI: Authentication successful
+    UI -> Auth: createSession(userId)
+    Auth --> UI: Session token
+    UI --> User: Login successful, redirect to dashboard
+else authentication failed
+    Auth --> UI: Authentication failed
+    UI --> User: Display error message
+end
+
+newpage
+
+' Use Case Diagram Example
+title "E-Commerce System Use Cases"
+
+left to right direction
+
+actor Customer
+actor Admin
+actor "Payment System" as Payment
+
+package "E-Commerce System" {
+    usecase "Browse Products" as UC1
+    usecase "Search Products" as UC2
+    usecase "Add to Cart" as UC3
+    usecase "Place Order" as UC4
+    usecase "Make Payment" as UC5
+    usecase "Track Order" as UC6
+    usecase "Manage Products" as UC7
+    usecase "View Reports" as UC8
+    usecase "Process Refunds" as UC9
+}
+
+' Customer use cases
+Customer --> UC1
+Customer --> UC2
+Customer --> UC3
+Customer --> UC4
+Customer --> UC5
+Customer --> UC6
+
+' Admin use cases
+Admin --> UC7
+Admin --> UC8
+Admin --> UC9
+
+' System interactions
+UC5 --> Payment : <<include>>
+UC4 ..> UC3 : <<extend>>
+
+newpage
+
+' Activity Diagram Example
+title "Order Processing Workflow"
+
+start
+
+:Receive Order;
+:Validate Order Details;
+
+if (Order Valid?) then (yes)
+    :Check Product Availability;
+    if (Products Available?) then (yes)
+        :Calculate Total Amount;
+        :Process Payment;
+        if (Payment Successful?) then (yes)
+            :Update Inventory;
+            :Generate Invoice;
+            :Send Confirmation Email;
+            :Prepare for Shipping;
+            stop
+        else (no)
+            :Send Payment Failed Notification;
+            stop
+        endif
+    else (no)
+        :Send Out of Stock Notification;
+        stop
+    endif
+else (no)
+    :Send Invalid Order Notification;
+    stop
+endif
+
+@enduml
