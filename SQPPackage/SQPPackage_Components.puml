@@ -1,0 +1,170 @@
+@startuml SQPPackage_Components
+
+!theme blueprint
+title SQPPackage.jl - Komponentendiagramm
+
+package "SQPPackage.jl" {
+    
+    [SQPPackage] as MAIN
+    note right of MAIN : Hauptmodul mit\nExports und Includes
+    
+    component "Core Algorithm" {
+        [SQPMethod] as SQP_ALG
+        [IterationData] as ITER
+        [SOCResult] as SOC
+    }
+    
+    component "Configuration" {
+        [Settings] as SETTINGS
+        note right of SETTINGS : Alle Solver-Parameter\nund Strategien
+    }
+    
+    component "Results & Statistics" {
+        [Stats] as STATS
+        [SQPStatus] as STATUS
+    }
+    
+    component "QP Solver Interface" {
+        [QPInterface] as QP_IF
+        [AbstractQPSolver] as ABS_QP
+        [ClarabelSolver] as CLAR
+        [OSQPSolver] as OSQP_SOLV
+        [QuadraticModelsSolver] as QM_SOLV
+        [QPResult] as QP_RES
+    }
+    
+    component "Globalization Strategy" {
+        [FilterLineSearchSQP] as FILTER
+        [Filter] as FILT_OBJ
+        [FilterPoint] as FILT_PT
+    }
+    
+    component "Numerical Methods" {
+        [ConvexifyModule] as CONVEX
+        [ResidualsModule] as RESIDUALS
+    }
+    
+    component "Problem Interface" {
+        [ProblemTypes] as PROB_TYPES
+    }
+    
+    component "Testing & Benchmarking" {
+        [SQPTestProblems] as TEST_PROB
+        [Benchmarking] as BENCH
+        [IpoptADNLP] as IPOPT_IF
+    }
+}
+
+package "External Dependencies" <<Cloud>> {
+    [LinearAlgebra] as LA
+    [SparseArrays] as SPARSE
+    [NLPModels] as NLP_MOD
+    [ADNLPModels] as ADNLP_MOD
+    [QuadraticModels] as QM_MOD
+    
+    component "QP Solvers" {
+        [OSQP] as OSQP_EXT
+        [Clarabel] as CLAR_EXT
+        [Ipopt] as IPOPT_EXT
+        [MadNLP] as MADNLP_EXT
+    }
+    
+    [Parameters] as PARAMS
+    [Printf] as PRINTF
+}
+
+' Main dependencies
+MAIN --> SQP_ALG : includes
+MAIN --> SETTINGS : includes
+MAIN --> STATS : includes
+MAIN --> QP_IF : includes
+MAIN --> FILTER : includes
+MAIN --> CONVEX : includes
+MAIN --> RESIDUALS : includes
+MAIN --> PROB_TYPES : includes
+MAIN --> TEST_PROB : includes
+MAIN --> BENCH : includes
+MAIN --> IPOPT_IF : includes
+
+' Core Algorithm Dependencies
+SQP_ALG --> SETTINGS : uses
+SQP_ALG --> STATS : creates
+SQP_ALG --> QP_IF : uses
+SQP_ALG --> FILTER : uses
+SQP_ALG --> CONVEX : uses
+SQP_ALG --> RESIDUALS : uses
+SQP_ALG --> ITER : creates
+SQP_ALG --> SOC : creates
+
+' QP Interface Dependencies
+QP_IF --> ABS_QP : defines
+ABS_QP <-- CLAR : implements
+ABS_QP <-- OSQP_SOLV : implements
+ABS_QP <-- QM_SOLV : implements
+QP_IF --> QP_RES : creates
+
+' Filter Dependencies
+FILTER --> FILT_OBJ : uses
+FILT_OBJ --> FILT_PT : contains
+
+' Stats Dependencies
+STATS --> STATUS : uses
+
+' External QP Solver Connections
+CLAR --> CLAR_EXT : wraps
+OSQP_SOLV --> OSQP_EXT : wraps
+QM_SOLV --> MADNLP_EXT : wraps
+IPOPT_IF --> IPOPT_EXT : wraps
+
+' External Library Dependencies
+MAIN --> LA : uses
+MAIN --> SPARSE : uses
+MAIN --> NLP_MOD : uses
+MAIN --> ADNLP_MOD : uses
+MAIN --> QM_MOD : uses
+SETTINGS --> PARAMS : uses
+MAIN --> PRINTF : uses
+
+' Data Flow Arrows
+SQP_ALG ..> SETTINGS : reads config
+SQP_ALG ..> STATS : updates results
+QP_IF ..> QP_RES : returns solutions
+FILTER ..> FILT_OBJ : manages filter
+
+interface "NLP Problem" as NLP_INT
+interface "QP Solution" as QP_SOL_INT
+interface "Filter Acceptance" as FILTER_INT
+
+SQP_ALG --> NLP_INT
+QP_IF --> QP_SOL_INT
+FILTER --> FILTER_INT
+
+note top of "Core Algorithm"
+    Hauptalgorithmus mit:
+    • SQP Iterationsschleife
+    • Second-Order Corrections
+    • Konvergenzprüfung
+end note
+
+note top of "QP Solver Interface"
+    Einheitliche Schnittstelle zu:
+    • OSQP (konvexe QPs)
+    • Clarabel (konische QPs)
+    • MadNLP (allgemeine QPs)
+end note
+
+note top of "Globalization Strategy"
+    Filter-basierte Liniensuche:
+    • Globale Konvergenz
+    • Robuste Schrittweitenanpassung
+    • Dominanz-Management
+end note
+
+note bottom of "Numerical Methods"
+    Numerische Hilfsfunktionen:
+    • Hessian-Regularisierung
+    • KKT-Residuenberechnung
+    • Verschiedene Konvexifizierungsstrategien
+end note
+
+@enduml

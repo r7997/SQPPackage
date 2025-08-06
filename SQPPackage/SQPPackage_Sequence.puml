@@ -1,0 +1,148 @@
+@startuml SQPPackage_Sequence
+
+!theme blueprint
+title SQPPackage.jl - Sequenzdiagramm der SQP Methode
+
+actor User
+participant "SQPPackage" as SQP
+participant "Settings" as SET
+participant "Stats" as STAT
+participant "SQPMethodCore" as CORE
+participant "QPInterfaceCore" as QP
+participant "AbstractQPSolver" as SOLVER
+participant "FilterLineSearchCore" as FILTER
+participant "ConvexifyCore" as CONV
+participant "ResidualsCore" as RES
+participant "NLPModel" as NLP
+
+User -> SQP : sqp_method(nlp, settings)
+activate SQP
+
+SQP -> SET : validate settings
+activate SET
+SET --> SQP : validated settings
+deactivate SET
+
+SQP -> STAT : create initial Stats
+activate STAT
+STAT --> SQP : empty stats object
+deactivate STAT
+
+SQP -> CORE : initialize SQP method
+activate CORE
+
+CORE -> QP : create_qp_solver(settings)
+activate QP
+QP -> SOLVER : new solver instance
+activate SOLVER
+SOLVER --> QP : solver object
+deactivate SOLVER
+QP --> CORE : qp_solver
+deactivate QP
+
+CORE -> FILTER : create Filter()
+activate FILTER
+FILTER --> CORE : empty filter
+deactivate FILTER
+
+loop Main SQP Iteration Loop [until convergence or max_iter]
+    
+    CORE -> NLP : obj(x), grad(x), cons(x), jac(x), hess(x)
+    activate NLP
+    NLP --> CORE : function evaluations
+    deactivate NLP
+    
+    CORE -> RES : compute_kkt_residuals(x, y, z, grad, cons, jac)
+    activate RES
+    RES --> CORE : inf_pr, inf_du, inf_comp
+    deactivate RES
+    
+    alt Check Convergence
+        CORE -> CORE : check KKT conditions
+        note right : if converged, exit loop
+    end
+    
+    CORE -> CONV : convexify_hessian!(H, strategy)
+    activate CONV
+    CONV --> CORE : regularized Hessian
+    deactivate CONV
+    
+    CORE -> QP : solve_qp(solver, H, g, A, b, C, l, u)
+    activate QP
+    QP -> SOLVER : solve quadratic subproblem
+    activate SOLVER
+    SOLVER --> QP : QPResult(x, y, status)
+    deactivate SOLVER
+    QP --> CORE : qp_result
+    deactivate QP
+    
+    alt QP Solution Successful
+        
+        CORE -> FILTER : filter_line_search(x, d, filter, nlp, settings)
+        activate FILTER
+        
+        loop Line Search
+            FILTER -> NLP : evaluate at x + α*d
+            activate NLP
+            NLP --> FILTER : f(x_new), h(x_new)
+            deactivate NLP
+            
+            FILTER -> FILTER : is_acceptable_to_filter(h_new, f_new)
+            
+            alt Step Acceptable
+                FILTER -> FILTER : add_to_filter!(filter, h, f)
+                note right : Update filter with current point
+            else Step Not Acceptable
+                FILTER -> FILTER : reduce step size α
+            end
+        end
+        
+        FILTER --> CORE : α, x_new, accepted
+        deactivate FILTER
+        
+        opt Second Order Correction [if use_soc enabled]
+            CORE -> CORE : compute_soc_step()
+            note right : Compute second-order correction
+            
+            CORE -> FILTER : filter_line_search(x, d_soc, filter, nlp, settings)
+            activate FILTER
+            FILTER --> CORE : α_soc, x_soc, soc_accepted
+            deactivate FILTER
+        end
+        
+        CORE -> CORE : update x, y, z
+        CORE -> STAT : update iteration data
+        activate STAT
+        STAT --> CORE : updated stats
+        deactivate STAT
+        
+    else QP Failed
+        CORE -> STAT : sqp_status = qp_failed
+        activate STAT
+        STAT --> CORE : failed stats
+        deactivate STAT
+        note right : Exit iteration loop
+    end
+    
+    CORE -> CORE : increment iteration counter
+    
+end
+
+CORE -> STAT : finalize_stats(final_x, final_y, final_z, status)
+activate STAT
+STAT --> CORE : final stats object
+deactivate STAT
+
+CORE --> SQP : final stats
+deactivate CORE
+
+SQP --> User : return Stats
+deactivate SQP
+
+note over User, NLP
+    Der SQP-Algorithmus löst iterativ quadratische Teilprobleme,
+    verwendet Filter-Liniensuche für globale Konvergenz,
+    und kann Second-Order Corrections für bessere lokale Konvergenz verwenden.
+end note
+
+@enduml
